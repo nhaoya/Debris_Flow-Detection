@@ -44,7 +44,7 @@ https://yinerda.yuque.com/yt1fh6/4gdtu/mgp5olalo7norg03 还有这个定位数据
 
 若改用其他串口，把程序里的端口 `/dev/ttyS3` 改成对应设备（UART0→`/dev/ttyS0`、UART3→`/dev/ttyS3`、UART4→`/dev/ttyS4`）。
 
-## 2. 使能 UART3
+## 2. 使能 UART3(推荐先用方式二，后期整体编译再考虑sdk)
 
 ### 方式一：写入 SDK 设备树（推荐，零手动操作）
 
@@ -193,5 +193,4 @@ fix=1 表示定位成功，fix=0 表示未定位
 | --- | --- |
 | `dtu_gps.c` | C 串口读取程序（交叉编译，Buildroot 使用） |
 | `Makefile` | 编译脚本（`make`） |
-| `uart3_enable.dts` | 设备树使能 UART3 的代码片段（追加到 SDK 的 config/dts_config） |
-| `_ref/` | 参考资料：Pico Zero 引脚图、设备树源码等 |
+
