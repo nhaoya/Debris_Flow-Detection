@@ -18,6 +18,7 @@ typedef enum {
     DF_WIRE_EVENT_START = 1,
     DF_WIRE_EVENT_UPDATE = 2,
     DF_WIRE_EVENT_END = 3,
+    DF_WIRE_HEARTBEAT = 4,
     DF_WIRE_IMAGE_META = 0x10,
     DF_WIRE_IMAGE_CHUNK = 0x11
 } DfWirePacketType;
@@ -49,8 +50,21 @@ typedef struct {
     uint8_t hop_count;
 } DfTelemetryDecoded;
 
+typedef struct {
+    uint16_t source_device_id;
+    uint32_t sequence;
+    uint32_t uptime_s;
+    uint32_t tx_ok;
+    uint8_t flags;
+} DfHeartbeatDecoded;
+
 /* flags */
 #define DF_WIRE_FLAG_CLOCK_VALID 0x01U
+
+/* heartbeat flags */
+#define DF_HEARTBEAT_FLAG_UART_OPEN 0x01U
+#define DF_HEARTBEAT_FLAG_AUX_HIGH 0x02U
+#define DF_HEARTBEAT_FLAG_AUX_ADVISORY 0x04U
 
 const char *df_wire_packet_type_name(DfWirePacketType type);
 uint16_t df_crc16_ccitt(const uint8_t *data, size_t len);
@@ -68,6 +82,18 @@ size_t df_telemetry_encode(const MonitorMessage *message,
 int df_telemetry_decode(const uint8_t *frame,
                         size_t frame_len,
                         DfTelemetryDecoded *out);
+
+size_t df_heartbeat_encode(uint16_t source_device_id,
+                           uint32_t sequence,
+                           uint32_t uptime_s,
+                           uint32_t tx_ok,
+                           uint8_t flags,
+                           uint8_t *out,
+                           size_t out_capacity);
+
+int df_heartbeat_decode(const uint8_t *frame,
+                        size_t frame_len,
+                        DfHeartbeatDecoded *out);
 
 /* Generic framing helpers used by the UART stream parser. */
 int df_wire_peek_frame_length(const uint8_t *buffer,

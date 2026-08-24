@@ -1,6 +1,7 @@
 #ifndef MOTION_ENGINE_H
 #define MOTION_ENGINE_H
 
+#include "debris_config.h"
 #include "image_utils.h"
 #include "monitor_queue.h"
 #include "motion_blob.h"
@@ -25,6 +26,7 @@ typedef struct {
     U8Image blob_foreground_mask;
     uint64_t gully_pixels;
     uint64_t static_pixels;
+    uint64_t outside_zone_pixels[DF_OUTSIDE_ZONE_COUNT];
     bool roi_ready;
     bool roi_debug_written;
 

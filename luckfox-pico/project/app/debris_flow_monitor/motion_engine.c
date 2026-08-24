@@ -13,6 +13,26 @@ static const RoiPoint k_static_polygon[DF_STATIC_POINT_COUNT] = {
     {430, 65}, {635, 50}, {635, 175}, {470, 155}
 };
 
+/* V1.4.3: 2x2 spatial zones over the full frame. Gully pixels are excluded
+ * from the zone population, so each ratio measures only outside-gully motion.
+ *   0 = top-left, 1 = top-right, 2 = bottom-left, 3 = bottom-right. */
+static unsigned outside_zone_index(int x, int y, int width, int height) {
+    const unsigned right = x >= width / 2 ? 1U : 0U;
+    const unsigned bottom = y >= height / 2 ? 1U : 0U;
+    return bottom * 2U + right;
+}
+
+static bool outside_zone_consensus_motion(const double zone_frame_ratio[DF_OUTSIDE_ZONE_COUNT],
+                                          unsigned *active_count_out) {
+    unsigned active_count = 0U;
+    unsigned i;
+    for (i = 0U; i < DF_OUTSIDE_ZONE_COUNT; ++i) {
+        if (zone_frame_ratio[i] >= DF_OUTSIDE_ZONE_FRAME_THRESHOLD) ++active_count;
+    }
+    if (active_count_out) *active_count_out = active_count;
+    return active_count >= DF_OUTSIDE_ZONE_MIN_ACTIVE_COUNT;
+}
+
 static int clamp_brightness_shift(double shift) {
     int applied = shift >= 0.0 ? (int)(shift + 0.5) : (int)(shift - 0.5);
     if (applied > DF_BRIGHTNESS_COMPENSATION_LIMIT) applied = DF_BRIGHTNESS_COMPENSATION_LIMIT;
@@ -42,6 +62,7 @@ static int ensure_buffers(MotionEngine *engine, const GrayImage *gray) {
     size_t pixel_count;
     size_t max_valid_blobs;
     bool gully_ok, static_ok;
+    int x, y;
     if (engine->buffers_ready && engine->gully_mask.width == gray->width && engine->gully_mask.height == gray->height)
         return 0;
 
@@ -61,6 +82,18 @@ static int ensure_buffers(MotionEngine *engine, const GrayImage *gray) {
         gray->width, gray->height, k_static_polygon, DF_STATIC_POINT_COUNT, DF_WIDTH, DF_HEIGHT);
     engine->roi_ready = engine->gully_pixels > 0 && engine->static_pixels > 0;
     if (!engine->roi_ready) return -1;
+
+    memset(engine->outside_zone_pixels, 0, sizeof(engine->outside_zone_pixels));
+    for (y = 0; y < gray->height; ++y) {
+        const uint8_t *gully_row = engine->gully_mask.data + (size_t)y * engine->gully_mask.stride;
+        for (x = 0; x < gray->width; ++x) {
+            if (!gully_row[x]) {
+                const unsigned zone = outside_zone_index(x, y, gray->width, gray->height);
+                ++engine->outside_zone_pixels[zone];
+            }
+        }
+    }
+
     if (u8_image_alloc(&engine->blob_foreground_mask, gray->width, gray->height) != 0) return -1;
 
     pixel_count = (size_t)gray->width * (size_t)gray->height;
@@ -78,6 +111,11 @@ static int ensure_buffers(MotionEngine *engine, const GrayImage *gray) {
     gully_ok = write_mask_pgm("/tmp/debris_gully_mask.pgm", &engine->gully_mask);
     static_ok = write_mask_pgm("/tmp/debris_static_mask.pgm", &engine->static_mask);
     printf("[ROI] masks: gully_pgm=%d static_pgm=%d\n", gully_ok ? 1 : 0, static_ok ? 1 : 0);
+    printf("[ROI] outside-zone pixels TL/TR/BL/BR=%llu/%llu/%llu/%llu\n",
+           (unsigned long long)engine->outside_zone_pixels[0],
+           (unsigned long long)engine->outside_zone_pixels[1],
+           (unsigned long long)engine->outside_zone_pixels[2],
+           (unsigned long long)engine->outside_zone_pixels[3]);
     fflush(stdout);
 
     engine->buffers_ready = true;
@@ -113,11 +151,11 @@ void motion_engine_deinit(MotionEngine *engine) {
 }
 
 void motion_engine_print_config(void) {
-    printf("[MOTION] V1.4.2 config: warmup=%llu bg_diff=%d frame_diff=%d brightness_limit=+-%d "
+    printf("[MOTION] V1.4.3 config: warmup=%llu bg_diff=%d frame_diff=%d brightness_limit=+-%d "
            "gully_threshold=%.3f static_threshold=%.3f shake_static_bg=%.3f shake_static_frame=%.3f "
            "rebase_static_bg=%.3f rebase_static_frame<=%.3f rebase_frames=%llu blob_min_area=%d "
            "track_min_area=%d fast_shake_static_frame=%.3f event_update=%.1fs event_merge_grace=%.1fs "
-           "snapshot_interval=%.1fs outside_motion=%.3f shake_hold=%llu snapshot_slots=%llu data_queue=%llu image_queue=%llu\n",
+           "snapshot_interval=%.1fs outside_zone>=%.3f zone_consensus=%u/%u shake_hold=%llu snapshot_slots=%llu data_queue=%llu image_queue=%llu\n",
            (unsigned long long)DF_WARMUP_FRAMES,
            DF_BACKGROUND_DIFF_THRESHOLD, DF_FRAME_DIFF_THRESHOLD, DF_BRIGHTNESS_COMPENSATION_LIMIT,
            DF_GULLY_MOTION_THRESHOLD, DF_STATIC_MOTION_THRESHOLD,
@@ -126,7 +164,8 @@ void motion_engine_print_config(void) {
            (unsigned long long)DF_REBASE_STABLE_FRAMES,
            DF_BLOB_MIN_AREA, DF_TRACK_MIN_BLOB_AREA, DF_FAST_CAMERA_SHAKE_STATIC_FRAME_THRESHOLD,
            DF_EVENT_SUMMARY_UPDATE_INTERVAL_SECONDS, DF_EVENT_CLOSE_GRACE_SECONDS,
-           DF_EVENT_SNAPSHOT_INTERVAL_SECONDS, DF_OUTSIDE_GULLY_CAMERA_MOTION_THRESHOLD,
+           DF_EVENT_SNAPSHOT_INTERVAL_SECONDS, DF_OUTSIDE_ZONE_FRAME_THRESHOLD,
+           (unsigned)DF_OUTSIDE_ZONE_MIN_ACTIVE_COUNT, (unsigned)DF_OUTSIDE_ZONE_COUNT,
            (unsigned long long)DF_CAMERA_DISTURBANCE_HOLD_FRAMES,
            (unsigned long long)DF_SNAPSHOT_RING_SLOTS,
            (unsigned long long)DF_MONITOR_MESSAGE_QUEUE_CAPACITY,
@@ -145,8 +184,11 @@ int motion_engine_process_frame(MotionEngine *engine, const GrayImage *gray) {
     double global_bg_ratio, gully_bg_ratio, static_bg_ratio;
     double global_frame_ratio, gully_frame_ratio, static_frame_ratio;
     uint64_t outside_gully_pixels, outside_gully_frame_changed, outside_gully_bg_changed;
+    uint64_t outside_zone_frame_changed[DF_OUTSIDE_ZONE_COUNT] = {0, 0, 0, 0};
+    double outside_zone_frame_ratio[DF_OUTSIDE_ZONE_COUNT] = {0.0, 0.0, 0.0, 0.0};
     double outside_gully_frame_ratio, outside_gully_bg_ratio, bg_mean_diff, frame_mean_diff;
-    bool fast_camera_shake, broad_camera_motion, camera_shaking;
+    unsigned outside_zone_active_count = 0U;
+    bool fast_camera_shake, static_camera_shake, broad_camera_motion, camera_shaking;
     bool possible_new_pose, post_shake_stable, post_shake_rebase_candidate;
     bool rebased_this_frame = false, rebase_hold, static_clean;
     bool instant_event_evidence, hold_event_evidence, camera_stable_for_event;
@@ -226,7 +268,12 @@ int motion_engine_process_frame(MotionEngine *engine, const GrayImage *gray) {
             frame_sum_diff += (uint64_t)frame_diff;
             if (frame_diff > DF_FRAME_DIFF_THRESHOLD) {
                 ++global_frame_changed;
-                if (gully_row[x]) ++gully_frame_changed;
+                if (gully_row[x]) {
+                    ++gully_frame_changed;
+                } else {
+                    const unsigned zone = outside_zone_index(x, y, gray->width, gray->height);
+                    ++outside_zone_frame_changed[zone];
+                }
                 if (static_row[x]) ++static_frame_changed;
             }
             if (gully_row[x] && bg_diff > DF_BACKGROUND_DIFF_THRESHOLD && frame_diff > DF_FRAME_DIFF_THRESHOLD)
@@ -249,11 +296,18 @@ int motion_engine_process_frame(MotionEngine *engine, const GrayImage *gray) {
     bg_mean_diff = total_pixels ? (double)bg_sum_diff / (double)total_pixels : 0.0;
     frame_mean_diff = total_pixels ? (double)frame_sum_diff / (double)total_pixels : 0.0;
 
+    for (unsigned zone = 0U; zone < DF_OUTSIDE_ZONE_COUNT; ++zone) {
+        outside_zone_frame_ratio[zone] = engine->outside_zone_pixels[zone]
+            ? (double)outside_zone_frame_changed[zone] / (double)engine->outside_zone_pixels[zone]
+            : 0.0;
+    }
+
     fast_camera_shake = static_frame_ratio >= DF_FAST_CAMERA_SHAKE_STATIC_FRAME_THRESHOLD;
-    broad_camera_motion = outside_gully_frame_ratio >= DF_OUTSIDE_GULLY_CAMERA_MOTION_THRESHOLD;
-    camera_shaking = fast_camera_shake || broad_camera_motion ||
-        (static_bg_ratio >= DF_CAMERA_SHAKE_STATIC_BG_THRESHOLD &&
-         static_frame_ratio >= DF_CAMERA_SHAKE_STATIC_FRAME_THRESHOLD);
+    static_camera_shake = static_bg_ratio >= DF_CAMERA_SHAKE_STATIC_BG_THRESHOLD &&
+                          static_frame_ratio >= DF_CAMERA_SHAKE_STATIC_FRAME_THRESHOLD;
+    broad_camera_motion = outside_zone_consensus_motion(outside_zone_frame_ratio,
+                                                        &outside_zone_active_count);
+    camera_shaking = fast_camera_shake || broad_camera_motion || static_camera_shake;
 
     if (camera_shaking) {
         engine->camera_disturbance_hold_remaining = DF_CAMERA_DISTURBANCE_HOLD_FRAMES;
@@ -404,7 +458,8 @@ int motion_engine_process_frame(MotionEngine *engine, const GrayImage *gray) {
     if (engine->frame_count % DF_MOTION_LOG_INTERVAL == 1) {
         printf("[MOTION] frame=%llu bgG=%.3f bgGu=%.3f bgSt=%.3f frmG=%.3f frmGu=%.3f frmSt=%.3f "
                "meanCur=%.2f meanBg=%.2f bgShift=%+.2f/%+d frmShift=%+.2f/%+d bgDiff=%.2f frmDiff=%.2f "
-               "cam=%s fastShake=%d outsideFrm=%.3f outsideBg=%.3f camHold=%llu postShake=%d "
+               "cam=%s fastShake=%d staticShake=%d outsideFrm=%.3f outsideBg=%.3f "
+               "zFrm=%.3f/%.3f/%.3f/%.3f zAct=%u/%u camHold=%llu postShake=%d "
                "settle=%llu/%llu hold=%llu learn=%.3f inst=%d event=%s confirm=%llu miss=%llu recover=%llu active=%d\n",
                (unsigned long long)engine->frame_count,
                global_bg_ratio, gully_bg_ratio, static_bg_ratio,
@@ -413,7 +468,11 @@ int motion_engine_process_frame(MotionEngine *engine, const GrayImage *gray) {
                bg_shift, bg_applied_shift, frame_shift, frame_applied_shift,
                bg_mean_diff, frame_mean_diff, camera_state,
                fast_camera_shake ? 1 : 0,
+               static_camera_shake ? 1 : 0,
                outside_gully_frame_ratio, outside_gully_bg_ratio,
+               outside_zone_frame_ratio[0], outside_zone_frame_ratio[1],
+               outside_zone_frame_ratio[2], outside_zone_frame_ratio[3],
+               outside_zone_active_count, (unsigned)DF_OUTSIDE_ZONE_COUNT,
                (unsigned long long)engine->camera_disturbance_hold_remaining,
                engine->post_shake_pending ? 1 : 0,
                (unsigned long long)engine->settled_new_pose_frames,
@@ -474,6 +533,6 @@ void motion_engine_drain_queues(MotionEngine *engine) {
 void motion_engine_finish_process(MotionEngine *engine) {
     if (!engine) return;
     /* Producer only. The caller dispatches/logs after this, so PROCESS_STOPPED
-     * can use the same UART2 path as normal EVENT_END messages. */
+     * can use the same LoRa telemetry path as normal EVENT_END messages. */
     event_manager_finish_process(&engine->event_manager);
 }

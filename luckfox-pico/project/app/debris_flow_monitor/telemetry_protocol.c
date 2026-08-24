@@ -5,6 +5,7 @@
 #include <string.h>
 
 #define DF_TELEMETRY_PAYLOAD_SIZE 57U
+#define DF_HEARTBEAT_PAYLOAD_SIZE 15U
 #define DF_CLOCK_VALID_MIN_EPOCH_MS 1704067200000ULL /* 2024-01-01 UTC */
 
 static void put_u16_le(uint8_t *p, uint16_t v) {
@@ -80,6 +81,7 @@ const char *df_wire_packet_type_name(DfWirePacketType type) {
     case DF_WIRE_EVENT_START: return "EVENT_START";
     case DF_WIRE_EVENT_UPDATE: return "EVENT_UPDATE";
     case DF_WIRE_EVENT_END: return "EVENT_END";
+    case DF_WIRE_HEARTBEAT: return "HEARTBEAT";
     case DF_WIRE_IMAGE_META: return "IMAGE_META";
     case DF_WIRE_IMAGE_CHUNK: return "IMAGE_CHUNK";
     default: return "UNKNOWN";
@@ -222,5 +224,64 @@ int df_telemetry_decode(const uint8_t *frame,
     out->end_reason = *p++;
     out->flags = *p++;
     out->hop_count = *p++;
+    return 0;
+}
+
+
+size_t df_heartbeat_encode(uint16_t source_device_id,
+                           uint32_t sequence,
+                           uint32_t uptime_s,
+                           uint32_t tx_ok,
+                           uint8_t flags,
+                           uint8_t *out,
+                           size_t out_capacity) {
+    uint8_t *p;
+    uint16_t crc;
+    const size_t total_size = DF_WIRE_HEADER_SIZE + DF_HEARTBEAT_PAYLOAD_SIZE + DF_WIRE_CRC_SIZE;
+    if (!out || out_capacity < total_size) return 0U;
+
+    out[0] = DF_WIRE_MAGIC0;
+    out[1] = DF_WIRE_MAGIC1;
+    out[2] = DF_WIRE_VERSION;
+    out[3] = (uint8_t)DF_WIRE_HEARTBEAT;
+    put_u16_le(out + 4, (uint16_t)DF_HEARTBEAT_PAYLOAD_SIZE);
+    p = out + DF_WIRE_HEADER_SIZE;
+    put_u16_le(p, source_device_id); p += 2;
+    put_u32_le(p, sequence); p += 4;
+    put_u32_le(p, uptime_s); p += 4;
+    put_u32_le(p, tx_ok); p += 4;
+    *p++ = flags;
+    if ((size_t)(p - (out + DF_WIRE_HEADER_SIZE)) != DF_HEARTBEAT_PAYLOAD_SIZE) return 0U;
+    crc = df_crc16_ccitt(out + 2, 4U + DF_HEARTBEAT_PAYLOAD_SIZE);
+    put_u16_le(out + DF_WIRE_HEADER_SIZE + DF_HEARTBEAT_PAYLOAD_SIZE, crc);
+    return total_size;
+}
+
+int df_heartbeat_decode(const uint8_t *frame,
+                        size_t frame_len,
+                        DfHeartbeatDecoded *out) {
+    uint16_t payload_len;
+    uint16_t expected_crc;
+    uint16_t actual_crc;
+    const uint8_t *p;
+    size_t expected_total;
+    if (!frame || !out) return -1;
+    if (frame_len < DF_WIRE_HEADER_SIZE + DF_WIRE_CRC_SIZE) return -2;
+    if (frame[0] != DF_WIRE_MAGIC0 || frame[1] != DF_WIRE_MAGIC1) return -3;
+    if (frame[2] != DF_WIRE_VERSION || frame[3] != (uint8_t)DF_WIRE_HEARTBEAT) return -4;
+    payload_len = get_u16_le(frame + 4);
+    if (payload_len != DF_HEARTBEAT_PAYLOAD_SIZE) return -5;
+    expected_total = DF_WIRE_HEADER_SIZE + (size_t)payload_len + DF_WIRE_CRC_SIZE;
+    if (frame_len != expected_total) return -6;
+    expected_crc = get_u16_le(frame + DF_WIRE_HEADER_SIZE + payload_len);
+    actual_crc = df_crc16_ccitt(frame + 2, 4U + payload_len);
+    if (expected_crc != actual_crc) return -7;
+    memset(out, 0, sizeof(*out));
+    p = frame + DF_WIRE_HEADER_SIZE;
+    out->source_device_id = get_u16_le(p); p += 2;
+    out->sequence = get_u32_le(p); p += 4;
+    out->uptime_s = get_u32_le(p); p += 4;
+    out->tx_ok = get_u32_le(p); p += 4;
+    out->flags = *p++;
     return 0;
 }

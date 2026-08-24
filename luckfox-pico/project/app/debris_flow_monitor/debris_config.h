@@ -61,7 +61,11 @@
 #define DF_EVENT_SUMMARY_UPDATE_INTERVAL_SECONDS 1.0
 #define DF_EVENT_SNAPSHOT_INTERVAL_SECONDS 30.0
 #define DF_EVENT_CLOSE_GRACE_SECONDS 3.0
-#define DF_OUTSIDE_GULLY_CAMERA_MOTION_THRESHOLD 0.03
+/* V1.4.3 camera-shake spatial consensus: split the frame into 2x2 zones,
+ * exclude gully pixels from each zone, and require broad motion in >=3 zones. */
+#define DF_OUTSIDE_ZONE_COUNT 4U
+#define DF_OUTSIDE_ZONE_FRAME_THRESHOLD 0.02
+#define DF_OUTSIDE_ZONE_MIN_ACTIVE_COUNT 3U
 #define DF_CAMERA_DISTURBANCE_HOLD_FRAMES 30ULL
 #define DF_POST_SHAKE_REBASE_GLOBAL_BG_THRESHOLD 0.10
 #define DF_POST_SHAKE_REBASE_OUTSIDE_BG_THRESHOLD 0.08
@@ -76,10 +80,14 @@
 #define DF_COARSE_DIRECTION_COUNT 10
 
 
-/* UART2 / LoRa transparent-UART transport defaults. */
-#define DF_UART2_DEFAULT_DEVICE "/dev/ttyS2"
-#define DF_UART2_DEFAULT_BAUD 115200
-#define DF_UART2_DEFAULT_DEVICE_ID 1U
+/* Validated LoRa transparent-UART hardware defaults from standalone Lora.c. */
+#define DF_LORA_DEFAULT_DEVICE "/dev/ttyS3"
+#define DF_LORA_DEFAULT_BAUD 9600
+#define DF_LORA_DEFAULT_DEVICE_ID 1U
+#define DF_LORA_GPIO_M0 70
+#define DF_LORA_GPIO_M1 71
+#define DF_LORA_GPIO_AUX 54
+#define DF_LORA_HEARTBEAT_INTERVAL_SECONDS 600U
 
 #define DF_GULLY_POINT_COUNT 4U
 #define DF_STATIC_POINT_COUNT 4U

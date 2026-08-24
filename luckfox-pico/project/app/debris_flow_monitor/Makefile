@@ -1,3 +1,6 @@
+# Pure-C V1.4.3 + validated LoRa UART3 transport for Luckfox/RV1106.
+# Runtime dependency: Rockit + RKAIQ only (plus standard C/POSIX libs).
+
 CROSS_COMPILE ?= arm-rockchip830-linux-uclibcgnueabihf-
 CC := $(CROSS_COMPILE)gcc
 
@@ -19,7 +22,7 @@ SRCS := \
 	monitor_queue.c \
 	motion_engine.c \
 	telemetry_protocol.c \
-	uart2_link.c \
+	lora_uart.c \
 	monitor_dispatcher.c
 
 OBJS := $(SRCS:%.c=$(BUILD_DIR)/%.o)
@@ -48,7 +51,7 @@ LDLIBS += -lrockit -lrkaiq -lpthread -ldl -lm
 
 .PHONY: all clean install check-pure-c
 
-# make 生成 child/out/bin，复制到 project/app/out/bin。
+# 与原 child app 行为一致：make 后既生成 child/out/bin，也复制到 project/app/out/bin。
 all: $(APP_TARGET)
 
 $(APP_TARGET): $(LOCAL_TARGET)

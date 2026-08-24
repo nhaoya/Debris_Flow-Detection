@@ -43,6 +43,8 @@ static int init_vi_device(CameraPipeline *pipeline) {
             return ret;
         }
         pipeline->dev_enabled = true;
+
+        /* 保持 V1.4.2 / RV1106 IPC SDK 当前行为：u32Num = pipe_id(0). */
         bind_pipe.u32Num = DF_PIPE_ID;
         bind_pipe.PipeId[0] = DF_PIPE_ID;
         ret = RK_MPI_VI_SetDevBindPipe(DF_DEV_ID, &bind_pipe);
@@ -100,7 +102,7 @@ int camera_pipeline_init(CameraPipeline *pipeline) {
 
 int camera_pipeline_capture_loop(CameraPipeline *pipeline,
                                  volatile sig_atomic_t *running,
-                                 Uart2Link *uart2) {
+                                 LoraUartLink *lora) {
     uint64_t fps_frames = 0;
     double fps_begin;
     if (!pipeline || !running) {
@@ -143,8 +145,11 @@ int camera_pipeline_capture_loop(CameraPipeline *pipeline,
         if (ret != RK_SUCCESS)
             fprintf(stderr, "[CAM] ReleaseChnFrame failed: %d\n", ret);
 
-
-        monitor_dispatch_event_manager(&pipeline->motion.event_manager, uart2);
+        /*
+         * Keep the V1.4.2 ordering: only consume event queues after the VI frame
+         * is released. UART I/O itself is performed by an independent worker.
+         */
+        monitor_dispatch_event_manager(&pipeline->motion.event_manager, lora);
 
         now = monotonic_seconds();
         seconds = now - fps_begin;
@@ -159,7 +164,7 @@ int camera_pipeline_capture_loop(CameraPipeline *pipeline,
     }
 
     motion_engine_finish_process(&pipeline->motion);
-    monitor_dispatch_event_manager(&pipeline->motion.event_manager, uart2);
+    monitor_dispatch_event_manager(&pipeline->motion.event_manager, lora);
     printf("[CAM] capture loop exit\n");
     fflush(stdout);
     return 0;
