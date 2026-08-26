@@ -1,0 +1,15 @@
+# Keil 编译产物
+SoundLightAlarm/Objects/
+SoundLightAlarm/Listings/
+SoundLightAlarm/DebugConfig/
+SoundLightAlarm/*.uvguix.*
+SoundLightAlarm/*.uvoptx
+SoundLightAlarm/keilkill.bat
+
+# 旧版/参考/素材（不入库）
+bsp/
+_ref/
+大夏龙雀-Lora模块例程/
+DX-LR32-433T22D资料包/
+JQ8900-16P语音模块资料包V1.1/
+微信图片_*.jpg
