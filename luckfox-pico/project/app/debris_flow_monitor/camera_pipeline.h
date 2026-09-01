@@ -17,7 +17,9 @@ void camera_pipeline_reset(CameraPipeline *pipeline);
 int camera_pipeline_init(CameraPipeline *pipeline);
 int camera_pipeline_capture_loop(CameraPipeline *pipeline,
                                  volatile sig_atomic_t *running,
-                                 LoraUartLink *lora);
+                                 LoraUartLink *lora,
+                                 unsigned deploy_preview_seconds,
+                                 unsigned deploy_preview_interval_seconds);
 void camera_pipeline_deinit(CameraPipeline *pipeline);
 
 #endif

@@ -60,7 +60,75 @@
 
 #define DF_EVENT_SUMMARY_UPDATE_INTERVAL_SECONDS 1.0
 #define DF_EVENT_SNAPSHOT_INTERVAL_SECONDS 30.0
+
+/* V1.4.4 JPEG/LoRa image transport. User-requested 180x340 is treated as
+ * landscape width=340, height=180 to match the camera view. */
+#define DF_IMAGE_JPEG_WIDTH 340
+#define DF_IMAGE_JPEG_HEIGHT 180
+#define DF_IMAGE_MAX_JPEG_BYTES 16384U
+#define DF_IMAGE_PREVIEW_JPEG_QUALITY 20
+#define DF_IMAGE_PREVIEW_FALLBACK_QUALITY_1 12
+#define DF_IMAGE_PREVIEW_FALLBACK_QUALITY_2 4
+#define DF_IMAGE_PREVIEW_TARGET_BYTES 3500U
+#define DF_IMAGE_EVENT_JPEG_QUALITY 35
+#define DF_IMAGE_EVENT_FALLBACK_QUALITY_1 28
+#define DF_IMAGE_EVENT_FALLBACK_QUALITY_2 20
+#define DF_IMAGE_EVENT_FALLBACK_QUALITY_3 14
+#define DF_IMAGE_EVENT_TARGET_BYTES 8000U
+#define DF_BOOT_PREVIEW_DURATION_SECONDS 600.0
+#define DF_BOOT_PREVIEW_INTERVAL_SECONDS 5.0
+#define DF_LORA_IMAGE_QUEUE_CAPACITY 2U
+#define DF_LORA_IMAGE_RX_SLOT_COUNT 4U
 #define DF_EVENT_CLOSE_GRACE_SECONDS 3.0
+
+/* V1.4.4 Communication/Image Reliability fix.  Four monitoring nodes all
+ * transmit and receive on the same broadcast channel.  Reliability uses
+ * broadcast feedback slots rather than per-chunk ACKs. */
+#define DF_LORA_RELIABILITY_CONTROL_QUEUE_CAPACITY 16U
+#define DF_LORA_CRITICAL_EVENT_PENDING_CAPACITY 4U
+#define DF_LORA_IMAGE_FEEDBACK_SLOT_COUNT 32U
+#define DF_LORA_IMAGE_FEEDBACK_SLOT_MS 70U
+#define DF_LORA_IMAGE_FEEDBACK_BASE_MS 120U
+#define DF_LORA_IMAGE_FEEDBACK_WINDOW_MS 3500U
+#define DF_LORA_IMAGE_MAX_REPAIR_ROUNDS 3U
+#define DF_LORA_IMAGE_NO_FEEDBACK_RETRIES 2U
+#define DF_LORA_IMAGE_RX_TIMEOUT_MS 12000U
+#define DF_LORA_IMAGE_COMPLETE_HOLD_MS 8000U
+#define DF_LORA_EVENT_ACK_SLOT_COUNT 16U
+#define DF_LORA_EVENT_ACK_SLOT_MS 60U
+#define DF_LORA_EVENT_ACK_BASE_MS 80U
+#define DF_LORA_EVENT_ACK_RETRY_MS 1400U
+#define DF_LORA_EVENT_ACK_MAX_RETRIES 2U
+
+/* V1.4.4 Reliability Chain Relay fix3.
+ * Physical RF remains broadcast, but software accepts only the immediately
+ * upstream chain hop.  IMAGE uses hop-by-hop store-and-forward.  Because the
+ * DX-LR32 is half-duplex, fix3 adds explicit turnaround/quiet windows and
+ * duplicate short feedback transmissions so ACK/NACK traffic is not buried by
+ * local UPDATE/heartbeat/bulk traffic.  Device IDs must be contiguous in
+ * downstream order (e.g. 10,11,12,13). */
+#define DF_LORA_RELAY_QUEUE_CAPACITY 64U
+#define DF_LORA_RELAY_CACHE_CAPACITY 128U
+#define DF_LORA_RELAY_DUP_SUPPRESS_MS 1200U
+#define DF_LORA_RELAY_CACHE_EXPIRE_MS 8000U
+#define DF_LORA_CHAIN_EVENT_RELAY_DELAY_MS 450U
+#define DF_LORA_CHAIN_IMAGE_RELAY_GUARD_MS 500U
+
+/* Chain-only half-duplex MAC guards.  These do not alter the wire format. */
+#define DF_LORA_CHAIN_IMAGE_FEEDBACK_TURNAROUND_MS 300U
+#define DF_LORA_CHAIN_IMAGE_FEEDBACK_REPEAT_MS 500U
+#define DF_LORA_CHAIN_IMAGE_FEEDBACK_COPIES 2U
+#define DF_LORA_CHAIN_IMAGE_SENDER_QUIET_MS 1200U
+#define DF_LORA_CHAIN_EVENT_ACK_TURNAROUND_MS 250U
+#define DF_LORA_CHAIN_EVENT_ACK_REPEAT_MS 400U
+#define DF_LORA_CHAIN_EVENT_ACK_COPIES 2U
+#define DF_LORA_CHAIN_EVENT_SENDER_QUIET_MS 900U
+
+/* Kept for non-chain compatibility and older logs. */
+#define DF_LORA_CHAIN_CONTROL_DELAY_MS DF_LORA_CHAIN_IMAGE_FEEDBACK_TURNAROUND_MS
+
+
+
 /* V1.4.3 camera-shake spatial consensus: split the frame into 2x2 zones,
  * exclude gully pixels from each zone, and require broad motion in >=3 zones. */
 #define DF_OUTSIDE_ZONE_COUNT 4U

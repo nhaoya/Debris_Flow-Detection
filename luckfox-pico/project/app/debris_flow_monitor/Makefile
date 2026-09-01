@@ -1,4 +1,4 @@
-# Pure-C V1.4.3 + validated LoRa UART3 transport for Luckfox/RV1106.
+# Pure-C V1.4.4 Communication/Image + validated LoRa UART3 transport for Luckfox/RV1106.
 # Runtime dependency: Rockit + RKAIQ only (plus standard C/POSIX libs).
 
 CROSS_COMPILE ?= arm-rockchip830-linux-uclibcgnueabihf-
@@ -18,6 +18,8 @@ SRCS := \
 	isp_min.c \
 	camera_pipeline.c \
 	image_utils.c \
+	jpeg_gray.c \
+	image_transport.c \
 	motion_blob.c \
 	monitor_queue.c \
 	motion_engine.c \
@@ -26,6 +28,7 @@ SRCS := \
 	monitor_dispatcher.c
 
 OBJS := $(SRCS:%.c=$(BUILD_DIR)/%.o)
+DEPS := $(OBJS:.o=.d)
 
 CPPFLAGS += \
 	-I. \
@@ -40,7 +43,7 @@ CPPFLAGS += \
 	-I$(MEDIA_OUT)/include/rkaiq/iq_parser_v2 \
 	-I$(RK_APP_OUTPUT)/include
 
-CFLAGS += -O2 -Wall -Wextra -std=gnu11 -fno-strict-aliasing
+CFLAGS += -O2 -Wall -Wextra -std=gnu11 -fno-strict-aliasing -MMD -MP
 
 LDFLAGS += \
 	-L$(MEDIA_OUT)/lib \
@@ -73,6 +76,8 @@ check-pure-c:
 	@! grep -R -nE 'opencv|cv::|std::|<vector>|<chrono>|\.cpp' -- *.c *.h || \
 		( echo "ERROR: C++/OpenCV token remains in C sources"; exit 1 )
 	@echo "pure-C dependency check: OK"
+
+-include $(DEPS)
 
 clean:
 	rm -rf $(BUILD_DIR) out

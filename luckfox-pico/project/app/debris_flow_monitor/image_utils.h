@@ -39,6 +39,7 @@ void u8_image_free(U8Image *img);
 void u16_image_free(U16Image *img);
 void u8_image_zero(U8Image *img);
 int gray_copy_to_u8(const GrayImage *src, U8Image *dst);
+int gray_resize_nearest_to_u8(const GrayImage *src, U8Image *dst, int out_width, int out_height);
 double gray_mean(const GrayImage *gray);
 
 uint64_t build_polygon_mask(

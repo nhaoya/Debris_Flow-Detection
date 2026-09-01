@@ -76,6 +76,25 @@ int gray_copy_to_u8(const GrayImage *src, U8Image *dst) {
     return 0;
 }
 
+int gray_resize_nearest_to_u8(const GrayImage *src, U8Image *dst, int out_width, int out_height) {
+    int x, y;
+    if (!src || !src->data || !dst || out_width <= 0 || out_height <= 0) return -1;
+    if (u8_image_alloc(dst, out_width, out_height) != 0) return -1;
+    for (y = 0; y < out_height; ++y) {
+        int sy = (int)(((int64_t)y * src->height) / out_height);
+        uint8_t *out_row = dst->data + (size_t)y * dst->stride;
+        const uint8_t *in_row;
+        if (sy >= src->height) sy = src->height - 1;
+        in_row = src->data + (size_t)sy * src->stride;
+        for (x = 0; x < out_width; ++x) {
+            int sx = (int)(((int64_t)x * src->width) / out_width);
+            if (sx >= src->width) sx = src->width - 1;
+            out_row[x] = in_row[sx];
+        }
+    }
+    return 0;
+}
+
 double gray_mean(const GrayImage *gray) {
     uint64_t sum = 0;
     uint64_t count;

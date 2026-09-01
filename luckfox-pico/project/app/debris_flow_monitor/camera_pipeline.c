@@ -1,8 +1,10 @@
 #include "camera_pipeline.h"
 #include "debris_config.h"
 #include "monitor_dispatcher.h"
+#include "image_transport.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <rk_mpi_sys.h>
@@ -102,17 +104,47 @@ int camera_pipeline_init(CameraPipeline *pipeline) {
 
 int camera_pipeline_capture_loop(CameraPipeline *pipeline,
                                  volatile sig_atomic_t *running,
-                                 LoraUartLink *lora) {
+                                 LoraUartLink *lora,
+                                 unsigned deploy_preview_seconds,
+                                 unsigned deploy_preview_interval_seconds) {
     uint64_t fps_frames = 0;
     double fps_begin;
+    double preview_begin;
+    double preview_next;
+    double preview_end;
+    bool preview_done_logged = false;
+    bool preview_pending = false;
+    uint8_t *preview_jpeg = NULL;
+    U8Image preview_copy;
+    uint64_t preview_capture_epoch_ms = 0U;
+    double preview_capture_elapsed = 0.0;
     if (!pipeline || !running) {
         fprintf(stderr, "[CAM] running is null\n");
         return -1;
     }
+    u8_image_reset(&preview_copy);
 
     printf("[CAM] start capture\n");
     motion_engine_print_config();
     fps_begin = monotonic_seconds();
+    preview_begin = fps_begin;
+    preview_next = preview_begin;
+    preview_end = preview_begin + (double)deploy_preview_seconds;
+    if (lora && deploy_preview_seconds > 0U && deploy_preview_interval_seconds > 0U) {
+        preview_jpeg = (uint8_t *)malloc(DF_IMAGE_MAX_JPEG_BYTES);
+        if (!preview_jpeg) {
+            fprintf(stderr, "[DEPLOY-PREVIEW] JPEG buffer allocation failed; preview disabled\n");
+        } else {
+            printf("[DEPLOY-PREVIEW] start duration=%us interval=%us jpeg=%dx%d first-frame-immediate\n",
+                   deploy_preview_seconds, deploy_preview_interval_seconds,
+                   DF_IMAGE_JPEG_WIDTH, DF_IMAGE_JPEG_HEIGHT);
+            fflush(stdout);
+        }
+    } else if (!lora) {
+        printf("[DEPLOY-PREVIEW] LoRa unavailable; deployment preview transmission disabled\n");
+    } else {
+        printf("[DEPLOY-PREVIEW] disabled by configuration\n");
+    }
 
     while (*running) {
         VIDEO_FRAME_INFO_S frame;
@@ -139,6 +171,28 @@ int camera_pipeline_capture_loop(CameraPipeline *pipeline,
         gray.width = (int)frame.stVFrame.u32Width;
         gray.height = (int)frame.stVFrame.u32Height;
         gray.stride = (int)frame.stVFrame.u32VirWidth;
+
+        /*
+         * Deployment preview starts with the first valid camera frame and lasts 10 minutes.
+         * Only a 340x180 grayscale copy is made while the VI DMA frame is held. The more
+         * expensive JPEG DCT runs after RK_MPI_VI_ReleaseChnFrame().
+         */
+        now = monotonic_seconds();
+        if (preview_jpeg && now < preview_end && now >= preview_next) {
+            if (gray_resize_nearest_to_u8(&gray, &preview_copy,
+                                          DF_IMAGE_JPEG_WIDTH,
+                                          DF_IMAGE_JPEG_HEIGHT) == 0) {
+                preview_pending = true;
+                preview_capture_epoch_ms = wall_clock_epoch_ms();
+                preview_capture_elapsed = now - preview_begin;
+            } else {
+                fprintf(stderr, "[DEPLOY-PREVIEW] frame copy/resize failed\n");
+            }
+            do {
+                preview_next += (double)deploy_preview_interval_seconds;
+            } while (preview_next <= now);
+        }
+
         motion_engine_process_frame(&pipeline->motion, &gray);
 
         ret = RK_MPI_VI_ReleaseChnFrame(DF_PIPE_ID, DF_DETECT_CHN, &frame);
@@ -151,12 +205,55 @@ int camera_pipeline_capture_loop(CameraPipeline *pipeline,
          */
         monitor_dispatch_event_manager(&pipeline->motion.event_manager, lora);
 
+        if (preview_pending && preview_jpeg && lora) {
+            GrayImage preview_gray;
+            size_t jpeg_size = 0U;
+            uint8_t quality = 0U;
+            uint32_t image_id = 0U;
+            int enc_ret;
+            preview_gray.data = preview_copy.data;
+            preview_gray.width = preview_copy.width;
+            preview_gray.height = preview_copy.height;
+            preview_gray.stride = preview_copy.stride;
+            enc_ret = image_transport_encode_gray(&preview_gray,
+                                                  DF_IMAGE_PURPOSE_DEPLOY_PREVIEW,
+                                                  preview_jpeg,
+                                                  DF_IMAGE_MAX_JPEG_BYTES,
+                                                  &jpeg_size,
+                                                  &quality);
+            if (enc_ret == 0) {
+                if (lora_uart_enqueue_image(lora,
+                                            0U,
+                                            preview_capture_epoch_ms,
+                                            DF_IMAGE_PURPOSE_DEPLOY_PREVIEW,
+                                            (uint16_t)DF_IMAGE_JPEG_WIDTH,
+                                            (uint16_t)DF_IMAGE_JPEG_HEIGHT,
+                                            quality,
+                                            preview_jpeg,
+                                            jpeg_size,
+                                            &image_id)) {
+                    printf("[DEPLOY-PREVIEW] queued image=%u t=%.1fs jpeg=%zu bytes q=%u\n",
+                           (unsigned)image_id, preview_capture_elapsed, jpeg_size, (unsigned)quality);
+                    fflush(stdout);
+                }
+            } else {
+                fprintf(stderr, "[DEPLOY-PREVIEW] JPEG encode failed ret=%d\n", enc_ret);
+            }
+            preview_pending = false;
+        }
+
         now = monotonic_seconds();
+        if (!preview_done_logged && preview_jpeg && now >= preview_end) {
+            preview_done_logged = true;
+            printf("[DEPLOY-PREVIEW] finished after %us; event images continue at >=%.0fs interval\n",
+                   deploy_preview_seconds, DF_EVENT_SNAPSHOT_INTERVAL_SECONDS);
+            fflush(stdout);
+        }
         seconds = now - fps_begin;
         if (seconds >= 5.0) {
             const double fps = (double)fps_frames / seconds;
-            printf("[CAM] average fps=%.2f frames=%llu time=%.2fs\n",
-                   fps, (unsigned long long)fps_frames, seconds);
+            // printf("[CAM] average fps=%.2f frames=%llu time=%.2fs\n",
+            //        fps, (unsigned long long)fps_frames, seconds);
             fflush(stdout);
             fps_frames = 0;
             fps_begin = now;
@@ -165,6 +262,8 @@ int camera_pipeline_capture_loop(CameraPipeline *pipeline,
 
     motion_engine_finish_process(&pipeline->motion);
     monitor_dispatch_event_manager(&pipeline->motion.event_manager, lora);
+    free(preview_jpeg);
+    u8_image_free(&preview_copy);
     printf("[CAM] capture loop exit\n");
     fflush(stdout);
     return 0;

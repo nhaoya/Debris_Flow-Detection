@@ -151,7 +151,7 @@ void motion_engine_deinit(MotionEngine *engine) {
 }
 
 void motion_engine_print_config(void) {
-    printf("[MOTION] V1.4.3 config: warmup=%llu bg_diff=%d frame_diff=%d brightness_limit=+-%d "
+    printf("[MOTION] V1.4.3 visual config (V1.4.4 transport): warmup=%llu bg_diff=%d frame_diff=%d brightness_limit=+-%d "
            "gully_threshold=%.3f static_threshold=%.3f shake_static_bg=%.3f shake_static_frame=%.3f "
            "rebase_static_bg=%.3f rebase_static_frame<=%.3f rebase_frames=%llu blob_min_area=%d "
            "track_min_area=%d fast_shake_static_frame=%.3f event_update=%.1fs event_merge_grace=%.1fs "
@@ -456,67 +456,67 @@ int motion_engine_process_frame(MotionEngine *engine, const GrayImage *gray) {
     learned_ratio = total_pixels ? (double)learned_pixels / (double)total_pixels : 0.0;
 
     if (engine->frame_count % DF_MOTION_LOG_INTERVAL == 1) {
-        printf("[MOTION] frame=%llu bgG=%.3f bgGu=%.3f bgSt=%.3f frmG=%.3f frmGu=%.3f frmSt=%.3f "
-               "meanCur=%.2f meanBg=%.2f bgShift=%+.2f/%+d frmShift=%+.2f/%+d bgDiff=%.2f frmDiff=%.2f "
-               "cam=%s fastShake=%d staticShake=%d outsideFrm=%.3f outsideBg=%.3f "
-               "zFrm=%.3f/%.3f/%.3f/%.3f zAct=%u/%u camHold=%llu postShake=%d "
-               "settle=%llu/%llu hold=%llu learn=%.3f inst=%d event=%s confirm=%llu miss=%llu recover=%llu active=%d\n",
-               (unsigned long long)engine->frame_count,
-               global_bg_ratio, gully_bg_ratio, static_bg_ratio,
-               global_frame_ratio, gully_frame_ratio, static_frame_ratio,
-               current_mean, engine->background_mean,
-               bg_shift, bg_applied_shift, frame_shift, frame_applied_shift,
-               bg_mean_diff, frame_mean_diff, camera_state,
-               fast_camera_shake ? 1 : 0,
-               static_camera_shake ? 1 : 0,
-               outside_gully_frame_ratio, outside_gully_bg_ratio,
-               outside_zone_frame_ratio[0], outside_zone_frame_ratio[1],
-               outside_zone_frame_ratio[2], outside_zone_frame_ratio[3],
-               outside_zone_active_count, (unsigned)DF_OUTSIDE_ZONE_COUNT,
-               (unsigned long long)engine->camera_disturbance_hold_remaining,
-               engine->post_shake_pending ? 1 : 0,
-               (unsigned long long)engine->settled_new_pose_frames,
-               (unsigned long long)DF_REBASE_STABLE_FRAMES,
-               (unsigned long long)engine->rebase_hold_remaining,
-               learned_ratio, instant_event_evidence ? 1 : 0,
-               temporal_event_state_name(engine->event_tracker.state),
-               (unsigned long long)engine->event_tracker.confirm_frames,
-               (unsigned long long)engine->event_tracker.miss_frames,
-               (unsigned long long)engine->event_tracker.recovery_frames,
-               temporal_candidate ? 1 : 0);
+        // printf("[MOTION] frame=%llu bgG=%.3f bgGu=%.3f bgSt=%.3f frmG=%.3f frmGu=%.3f frmSt=%.3f "
+        //        "meanCur=%.2f meanBg=%.2f bgShift=%+.2f/%+d frmShift=%+.2f/%+d bgDiff=%.2f frmDiff=%.2f "
+        //        "cam=%s fastShake=%d staticShake=%d outsideFrm=%.3f outsideBg=%.3f "
+        //        "zFrm=%.3f/%.3f/%.3f/%.3f zAct=%u/%u camHold=%llu postShake=%d "
+        //        "settle=%llu/%llu hold=%llu learn=%.3f inst=%d event=%s confirm=%llu miss=%llu recover=%llu active=%d\n",
+        //        (unsigned long long)engine->frame_count,
+        //        global_bg_ratio, gully_bg_ratio, static_bg_ratio,
+        //        global_frame_ratio, gully_frame_ratio, static_frame_ratio,
+        //        current_mean, engine->background_mean,
+        //        bg_shift, bg_applied_shift, frame_shift, frame_applied_shift,
+        //        bg_mean_diff, frame_mean_diff, camera_state,
+        //        fast_camera_shake ? 1 : 0,
+        //        static_camera_shake ? 1 : 0,
+        //        outside_gully_frame_ratio, outside_gully_bg_ratio,
+        //        outside_zone_frame_ratio[0], outside_zone_frame_ratio[1],
+        //        outside_zone_frame_ratio[2], outside_zone_frame_ratio[3],
+        //        outside_zone_active_count, (unsigned)DF_OUTSIDE_ZONE_COUNT,
+        //        (unsigned long long)engine->camera_disturbance_hold_remaining,
+        //        engine->post_shake_pending ? 1 : 0,
+        //        (unsigned long long)engine->settled_new_pose_frames,
+        //        (unsigned long long)DF_REBASE_STABLE_FRAMES,
+        //        (unsigned long long)engine->rebase_hold_remaining,
+        //        learned_ratio, instant_event_evidence ? 1 : 0,
+        //        temporal_event_state_name(engine->event_tracker.state),
+        //        (unsigned long long)engine->event_tracker.confirm_frames,
+        //        (unsigned long long)engine->event_tracker.miss_frames,
+        //        (unsigned long long)engine->event_tracker.recovery_frames,
+        //        temporal_candidate ? 1 : 0);
         fflush(stdout);
 
-        printf("[BLOB] frame=%llu analyzed=%d fgPix=%llu fgRatio=%.3f movingPix=%llu movingRatio=%.3f "
-               "raw=%d valid=%d totalArea=%llu totalRatio=%.3f largestArea=%d largestRatio=%.3f "
-               "largestCx=%.1f largestCy=%.1f largestBox=%d,%d,%d,%d allCx=%.1f allCy=%.1f\n",
-               (unsigned long long)engine->frame_count, blob_analyzed ? 1 : 0,
-               (unsigned long long)gully_bg_changed, gully_bg_ratio,
-               (unsigned long long)moving_overlap_pixels, moving_overlap_ratio,
-               blob_stats.raw_component_count, blob_stats.valid_blob_count,
-               (unsigned long long)blob_stats.total_valid_area, blob_total_area_ratio,
-               blob_stats.largest.area, largest_blob_ratio,
-               blob_stats.largest.cx, blob_stats.largest.cy,
-               blob_stats.largest.min_x, blob_stats.largest.min_y,
-               blob_stats.largest.max_x, blob_stats.largest.max_y,
-               blob_stats.combined_cx, blob_stats.combined_cy);
+        // printf("[BLOB] frame=%llu analyzed=%d fgPix=%llu fgRatio=%.3f movingPix=%llu movingRatio=%.3f "
+        //        "raw=%d valid=%d totalArea=%llu totalRatio=%.3f largestArea=%d largestRatio=%.3f "
+        //        "largestCx=%.1f largestCy=%.1f largestBox=%d,%d,%d,%d allCx=%.1f allCy=%.1f\n",
+        //        (unsigned long long)engine->frame_count, blob_analyzed ? 1 : 0,
+        //        (unsigned long long)gully_bg_changed, gully_bg_ratio,
+        //        (unsigned long long)moving_overlap_pixels, moving_overlap_ratio,
+        //        blob_stats.raw_component_count, blob_stats.valid_blob_count,
+        //        (unsigned long long)blob_stats.total_valid_area, blob_total_area_ratio,
+        //        blob_stats.largest.area, largest_blob_ratio,
+        //        blob_stats.largest.cx, blob_stats.largest.cy,
+        //        blob_stats.largest.min_x, blob_stats.largest.min_y,
+        //        blob_stats.largest.max_x, blob_stats.largest.max_y,
+        //        blob_stats.combined_cx, blob_stats.combined_cy);
         fflush(stdout);
 
-        printf("[TRACK] frame=%llu valid=%d id=%d age=%llu missed=%llu area=%d cx=%.1f cy=%.1f "
-               "dx=%+.1f dy=%+.1f vx=%+.1f vy=%+.1f speed=%.1f speedClass=%s dir=%s dirStreak=%llu\n",
-               (unsigned long long)engine->frame_count,
-               engine->dominant_tracker.valid ? 1 : 0,
-               engine->dominant_tracker.id,
-               (unsigned long long)engine->dominant_tracker.age_frames,
-               (unsigned long long)engine->dominant_tracker.missed_frames,
-               engine->dominant_tracker.valid ? engine->dominant_tracker.blob.area : 0,
-               engine->dominant_tracker.valid ? engine->dominant_tracker.blob.cx : 0.0,
-               engine->dominant_tracker.valid ? engine->dominant_tracker.blob.cy : 0.0,
-               engine->dominant_tracker.dx, engine->dominant_tracker.dy,
-               engine->dominant_tracker.vx, engine->dominant_tracker.vy,
-               engine->dominant_tracker.speed_px_s,
-               coarse_speed_name(engine->dominant_tracker.speed_px_s),
-               coarse_direction_name(engine->dominant_tracker.direction),
-               (unsigned long long)engine->dominant_tracker.direction_streak);
+        // printf("[TRACK] frame=%llu valid=%d id=%d age=%llu missed=%llu area=%d cx=%.1f cy=%.1f "
+        //        "dx=%+.1f dy=%+.1f vx=%+.1f vy=%+.1f speed=%.1f speedClass=%s dir=%s dirStreak=%llu\n",
+        //        (unsigned long long)engine->frame_count,
+        //        engine->dominant_tracker.valid ? 1 : 0,
+        //        engine->dominant_tracker.id,
+        //        (unsigned long long)engine->dominant_tracker.age_frames,
+        //        (unsigned long long)engine->dominant_tracker.missed_frames,
+        //        engine->dominant_tracker.valid ? engine->dominant_tracker.blob.area : 0,
+        //        engine->dominant_tracker.valid ? engine->dominant_tracker.blob.cx : 0.0,
+        //        engine->dominant_tracker.valid ? engine->dominant_tracker.blob.cy : 0.0,
+        //        engine->dominant_tracker.dx, engine->dominant_tracker.dy,
+        //        engine->dominant_tracker.vx, engine->dominant_tracker.vy,
+        //        engine->dominant_tracker.speed_px_s,
+        //        coarse_speed_name(engine->dominant_tracker.speed_px_s),
+        //        coarse_direction_name(engine->dominant_tracker.direction),
+        //        (unsigned long long)engine->dominant_tracker.direction_streak);
         fflush(stdout);
     }
 
