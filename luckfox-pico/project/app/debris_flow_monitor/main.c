@@ -2,13 +2,13 @@
 #include "debris_config.h"
 #include "isp_min.h"
 #include "lora_uart.h"
+#include "fourg_forward.h"
 
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include <rk_mpi_sys.h>
 
 static volatile sig_atomic_t g_running = 1;
@@ -157,7 +157,9 @@ int main(int argc, char **argv) {
     }
     camera_ready = 1;
     printf("[MAIN] camera opened; starting LoRa transport next\n");
-
+    
+    fourg_forward_init();
+    
     if (lora_enabled) {
         if (lora_uart_init(&lora, lora_device, lora_baud, (uint16_t)device_id_int,
                            DF_LORA_GPIO_M0, DF_LORA_GPIO_M1, DF_LORA_GPIO_AUX,

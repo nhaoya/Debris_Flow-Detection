@@ -25,7 +25,9 @@ SRCS := \
 	motion_engine.c \
 	telemetry_protocol.c \
 	lora_uart.c \
-	monitor_dispatcher.c
+	monitor_dispatcher.c \
+	fourg_image_forward.c \
+	fourg_forward.c \
 
 OBJS := $(SRCS:%.c=$(BUILD_DIR)/%.o)
 DEPS := $(OBJS:.o=.d)

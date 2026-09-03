@@ -9,6 +9,7 @@
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
+#include "fourg_image_forward.h"
 
 /* DX-LR32-433T22D V2.0 AUX semantics:
  *   HIGH = radio busy (TX/RX/mode switching)
@@ -1160,6 +1161,11 @@ static void finish_received_image(LoraUartLink *link, LoraImageRxSlot *slot) {
     }
     written = fwrite(slot->data, 1U, slot->total_size, fp);
     fclose(fp);
+    
+    // 图片收齐，通过4G转发到服务器
+    fourg_image_forward_send((uint16_t)slot->source_device_id,
+                             slot->image_id, slot->event_id, path);
+
     if (written != slot->total_size) {
         fprintf(stderr, "[LORA-RX-IMAGE] short write path=%s %zu/%u\n",
                 path, written, (unsigned)slot->total_size);
@@ -1503,7 +1509,9 @@ static void parse_rx_frames(LoraUartLink *link) {
                 remove_rx_prefix(link, frame_len);
                 continue;
             }
-        } else if (link->rx_buffer[3] >= (uint8_t)DF_WIRE_EVENT_START &&
+            
+        }
+        else if (link->rx_buffer[3] >= (uint8_t)DF_WIRE_EVENT_START &&
                    link->rx_buffer[3] <= (uint8_t)DF_WIRE_EVENT_END) {
             DfTelemetryDecoded d;
             decode_ret = df_telemetry_decode(link->rx_buffer, frame_len, &d);
